@@ -246,10 +246,12 @@ clean_page_table <- function(x) {
   }
   
   # Combine names that spilled over onto multiple lines
-  diver_names <- x[!duplicated(x[, c("Name", "Rank")]), c("Name", "Rank")]
-  diver_names <- aggregate(Name ~ Rank, data = diver_names, paste, collapse = " ")
+  diver_names <- x[!duplicated(x[, c("Name", "Rank", "NAT")]),
+                   c("Name", "Rank", "NAT")]
+  diver_names <- aggregate(Name ~ Rank + NAT,
+                           data = diver_names, paste, collapse = " ")
   
-  x <- merge(x[, -2], diver_names, by = "Rank")[, c(1, 17, 2:16)]
+  x <- merge(x[, -2], diver_names, by = c("Rank", "NAT"))[, c(1, 17, 2:16)]
   
   return(x)
 }
@@ -285,6 +287,11 @@ tabulate_pages <- function(x_full, col_info) {
     
     # Pivot data using x/y ranges to recreate the table structure
     x <- pivot_pg_data(x)
+    
+    # This would be a blank page
+    if (nrow(x) <= 2) {
+      break
+    }
     
     # Clean table
     x <- clean_page_table(x)
