@@ -42,14 +42,22 @@ get_judges_pgs <- function(event, round, all_pages) {
 
 
 # -----------------------------------------------------------------------------
-collect_all_event_pgs <- function(event, rounds, pdf_path){
+collect_pgs <- function(events, rounds, pdf_path){
   
   x <- pdf_text(pdf_path)
-  pages <- sapply(rounds, function(r) {get_results_pgs(event, r, x)})
-  pages <- c(pages, sapply(rounds, function(r) {get_judges_pgs(event, r, x)}))
+  pages_r <- sapply(rounds, function(r) { sapply(events, function(e) {
+      get_results_pgs(e, r, x)}, simplify = FALSE)}, simplify = FALSE)
+  pages_r <- unlist(pages_r, recursive = FALSE)
   
-  names(pages) <- c(paste(tolower(rounds), "results", sep = "_"),
-                    paste(tolower(rounds), "judges", sep = "_"))
+  pages_j <- sapply(rounds, function(r) { sapply(events, function(e) {
+    get_judges_pgs(e, r, x)}, simplify = FALSE)}, simplify = FALSE)
+  pages_j <- unlist(pages_j, recursive = FALSE)
+  
+  pages <- c(pages_r, pages_j)
+  
+  names(pages) <- c(paste(tolower(names(pages_r)), "results", sep = "."),
+                    paste(tolower(names(pages_j)), "judges", sep = "."))
+  names(pages) <- gsub(" ", "_", names(pages))
   
   return(pages)
   
@@ -258,19 +266,18 @@ clean_page_table <- function(x) {
 
 
 # -----------------------------------------------------------------------------
-
-tabulate_pages <- function(x_full, col_info) {
+tabulate_results <- function(x_full, col_info) {
   
   n_pages <- length(x_full)
   x_table <- data.frame()
   for (i in 1:n_pages){
-    
+    print(i)
     x <- x_full[[i]]
   
     # Filtering out header/footer 700 if last pg
     if (i == n_pages){
       x <- x[which(x$y > 132), ]  # hard-coded y val of bottom of header text
-      x <- x[which(x$y < 700), ]  # hard-coded y val of top of footer text
+      x <- x[which(x$y < 690), ]  # hard-coded y val of top of footer text
     } else {
       x <- x[which(x$y > 132), ]  # hard-coded y val of bottom of header text
       x <- x[which(x$y < 762), ]  # hard-coded y val of top of footer text
