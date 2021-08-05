@@ -160,7 +160,7 @@ get_page_col_ranges <- function(x, col_info) {
 
 
 # -----------------------------------------------------------------------------
-pivot_to_table <- function(x) {
+pivot_pg_data <- function(x) {
   
   # Only missing range for "Judge's Score" heading which is extraneous anyways
   # (this was in my initial test PDF - could be filtering more out later)
@@ -185,7 +185,7 @@ pivot_to_table <- function(x) {
 
 # -----------------------------------------------------------------------------
 # Populate name, rank, and nationality fields to all relevant rows
-extend_name_rank_nat <- function(y) {
+extend_diver_info <- function(y) {
   
   name <- NA
   rank <- NA
@@ -222,6 +222,87 @@ extend_name_rank_nat <- function(y) {
   return(y)
   
 }
+
+
+# -----------------------------------------------------------------------------
+# Cleaning up pivoted page table
+# TODO: Evaluate how robust this is to other pages/files
+clean_page_table <- function(x) {
+  # First two rows have column names
+  x[1, ] <- ifelse(is.na(x[1, ]), "", paste(x[1, ], " ", sep = ""))
+  names(x) <- paste(x[1, ], x[2, ], sep = "")
+  x <- x[-c(1, 2), ]
+  rownames(x) <- NULL
+  
+  x <- extend_diver_info(x)
+  
+  # Handle case where "GARCIA BOISSIER" header text was in a range above first
+  # row of table
+  # TODO: See how robust this is with other sheets
+  for (i in 1:nrow(x)) {
+    if(sum(is.na(x[i, 4:17])) == 14) {
+      x <- x[-i, ]
+    }
+  }
+  
+  # Combine names that spilled over onto multiple lines
+  diver_names <- x[!duplicated(x[, c("Name", "Rank")]), c("Name", "Rank")]
+  diver_names <- aggregate(Name ~ Rank, data = diver_names, paste, collapse = " ")
+  
+  x <- merge(x[, -2], diver_names, by = "Rank")[, c(1, 17, 2:16)]
+  
+  return(x)
+}
+
+
+# -----------------------------------------------------------------------------
+
+tabulate_pages <- function(x_full, col_info) {
+  
+  n_pages <- length(x_full)
+  x_table <- data.frame()
+  for (i in 1:n_pages){
+    
+    x <- x_full[[i]]
+  
+    # Filtering out header/footer 700 if last pg
+    if (i == n_pages){
+      x <- x[which(x$y > 132), ]  # hard-coded y val of bottom of header text
+      x <- x[which(x$y < 700), ]  # hard-coded y val of top of footer text
+    } else {
+      x <- x[which(x$y > 132), ]  # hard-coded y val of bottom of header text
+      x <- x[which(x$y < 762), ]  # hard-coded y val of top of footer text
+    }
+    
+    # Group text into y-ranges (approximately the rows)
+    x <- get_page_row_ranges(x)
+    
+    # Group text into x-ranges (approximately the columns)
+    # TODO: Currently expecting col_info to be manually generated - it seems
+    # like the layout of these sheets is very consistent but automating it would
+    # be ideal. Maybe could use pdf_text output to get approx widths? 
+    x <- get_page_col_ranges(x, col_info)
+    
+    # Pivot data using x/y ranges to recreate the table structure
+    x <- pivot_pg_data(x)
+    
+    # Clean table
+    x <- clean_page_table(x)
+    
+    x_table <- rbind(x_table, x)
+    
+  }
+  
+  return(x_table)
+  
+}
+
+
+
+
+
+
+
 
 
 
