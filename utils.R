@@ -271,7 +271,6 @@ tabulate_results <- function(x_full, col_info) {
   n_pages <- length(x_full)
   x_table <- data.frame()
   for (i in 1:n_pages){
-    print(i)
     x <- x_full[[i]]
   
     # Filtering out header/footer 700 if last pg
