@@ -1,8 +1,16 @@
 # -----------------------------------------------------------------------------
 # Helper functions for converting PDF to data frame using pdftools
-# !!! Need to be commented properly and cleaned up
 # -----------------------------------------------------------------------------
 
+# TODO: Functions need to be properly commented and in some cases cleaned and/or
+# separated into multiple functions
+
+# TODO: Make tabulate_judges robust to multiple pages of judges
+
+# TODO: For now am ignoring alternate judges - when/where do they come up
+# in the detailed results page?
+
+# TODO: Manually obtain some of the judges nationalities
 
 # -----------------------------------------------------------------------------
 # Expects all_pages to be list of strings, each string containing all text from
@@ -311,10 +319,86 @@ tabulate_results <- function(x_full, col_info) {
 }
 
 
+# -----------------------------------------------------------------------------
+# TODO: This function could be split up into pieces and made more efficient/
+# readable
+tabulate_judges <- function(x) {
+  
+  if (length(x) > 1) {
+    print("Error: multiple pages of judges.")
+    return(NULL)
+  }
+  
+  x <- x[[1]]
+  
+  # "Panel of Judges" text is at a little above y = 135, footer a little below
+  # y = 700, filter out
+  x <- x[which(x$y > 150 & x$y < 700),]
+  
+  # Looking for "Panels" so we know which rounds had which judges
+  panels <- x[which(x$text == "Panel"), c(2, 4)]
+  
+  if (nrow(panels) > 0) {
+    panels$min_y <- panels$y - panels$height/2
+    panels$max_y <- panels$y + panels$height/2
+    panels <- panels[order(panels$y), ]
+    
+    judges_table <- data.frame()
+    for (i in 1:nrow(panels)) {
+      
+      if (i == nrow(panels)) {
+        x_panel <- x[which(x$y > as.numeric(panels[i, "min_y"])), ]
+      } else {
+        x_panel <- x[which(x$y > as.numeric(panels[i, "min_y"]) &
+                             x$y < as.numeric(panels[i + 1, "min_y"])), ]
+      }
+      
+      x_panel <- get_page_row_ranges(x_panel)
+      x_panel <- aggregate(text ~ y_range, data = x_panel, paste, collapse = " ")
+      
+      rounds <- x_panel[which(grepl("rounds", x_panel$text)), 2]
+      rounds <- gsub("[^0-9-]", "", rounds)
+      rounds <- as.integer(unlist(strsplit(rounds, "-")))
+      
+      if (length(rounds) == 2 & nrow(panels) < 3) { # we have a range
+        rounds <- seq(rounds[1], rounds[2])
+      } # otherwise leave it - judges skip rounds
+      
+      judges <- x_panel[which(grepl("Judge", x_panel$text)), 2]
+      judges <- data.frame(num = gsub("[^0-9]", "", judges),
+                           name = gsub("[^a-zA-Z ]", "", judges))
+      judges$name <- gsub("Judge ", "", judges$name)
+      
+      rounds <- data.frame(round = rounds)
+      judges <- merge(judges, rounds, by = c())
+      
+      judges_table <- rbind(judges_table, judges)
+      
+    }
+    
+    return(judges_table)
+    
+  } else {
+    
+    x <- get_page_row_ranges(x)
+    x <- aggregate(text ~ y_range, data = x, paste, collapse = " ")
+    
+    judges <- x[which(grepl("Judge", x$text)), 2]
+    judges <- data.frame(num = gsub("[^0-9]", "", judges),
+                         name = gsub("[^a-zA-Z ]", "", judges))
+    judges$name <- gsub("Judge ", "", judges$name)
+    
+    rounds <- data.frame(round = 1:7)
+    judges <- merge(judges, rounds, by = c())
+    
+    return(judges)
+    
+  }
+  
+}
 
 
-
-
+# -----------------------------------------------------------------------------
 
 
 
