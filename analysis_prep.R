@@ -16,7 +16,7 @@ names(r)[15] <- "id"
 r$round <- ave(r$Dive.No., r$id, FUN = seq_along)
 
 # Reshape so that we have a row for each score for each judge for each dive
-r <- r[, c(13, 14, 16, 1, 2, 3, 5:12)]
+r <- r[, c(13, 14, 16, 1, 2, 3, 5:12)]  # Use variable names instead if possible
 r <- reshape(r, varying = list(8:14), v.names = "Score",
                 direction = "long")[, -10]
 names(r)[8] <- "judge_num"

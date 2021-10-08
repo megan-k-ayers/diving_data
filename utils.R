@@ -93,6 +93,7 @@ get_page_row_ranges <- function(page_data) {
   min_height <- min(page_data$height)
   
   y_positions <- table(page_data$y)
+  
   # only take into account positions with frequency > 1
   y_positions <- y_positions[which(y_positions > 1)]
   y_positions <- as.numeric(names(y_positions))
@@ -274,6 +275,8 @@ clean_page_table <- function(x) {
 
 
 # -----------------------------------------------------------------------------
+# TODO: Make header/footer cut-offs a user input? (Test with Olympics data
+# and see how it goes)
 tabulate_results <- function(x_full, col_info) {
   
   n_pages <- length(x_full)
