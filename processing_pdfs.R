@@ -7,8 +7,7 @@ pdf_path <- "./data/omega_complete_results_book_2021_diving_world_cup.pdf"
 events <- c(" Men's 3m Springboard", "Women's 3m Springboard",
             " Men's 10m Platform", "Women's 10m Platform")
 rounds <- c("Preliminary", "Semifinal", "Final")
-col_info <- read.csv("./data/manual_column_info.csv")
-col_info$x_range <- paste(col_info$min, " - ", col_info$max, sep = "")
+
 
 # Get the relevant page numbers for these events/rounds
 pages <- collect_pgs(events, rounds, pdf_path)
@@ -22,15 +21,15 @@ for (i in 1:length(pages)) {
   pages_name <- names(pages)[i]
   ids <- unlist(strsplit(pages_name, "\\."))
   ids <- gsub("_", " ", ids)
+  names(ids) <- c("round", "event", "type")
   
-  print(paste("Tabulating", pages_name))
+  print(paste("Tabulating", paste(ids, collapse = " ")))
   
   x <- get_pdf_data(pdf_path, pages[[i]])
   
-  if (ids[3] == "results") {
-    x <- tabulate_results(x, col_info)
-    x$level <- ids[1]
-    x$event <- ids[2]
+  if (ids["type"] == "results") {
+    x <- combine_pages(ids["event"], ids["round"], x)
+    test <- get_results_df(x)
     results <- rbind(results, x)
   }
   
