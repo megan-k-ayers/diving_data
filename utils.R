@@ -1,6 +1,13 @@
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # HELPER FUNCTIONS FOR CONVERTING PDF DIVING DATA TO DATA FRAMES USING PDFTOOLS
+#
+# TODO: Functions need to all be properly commented with doc strings and in some
+# cases cleaned and/or separated into multiple functions
+#
+# TODO: Make judges functions robust to multiple pages of judges
+#
+# TODO: Manually obtain some of the judges nationalities
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
@@ -95,40 +102,106 @@ get_pdf_data <- function(pdf_path, pages) {
 
 
 # -----------------------------------------------------------------------------
-#' Function that combines list of pages from pdf_data output (adapted from
-#' Jay's code in the first part of this assignment)
-#' @param event Name of the diving event ("W3mSB", "M3mSB", "W10mPF", or
-#' "M10mPF")
-#' @param x pdf_data output
-#' @return One list, where each item is a character array representing a "row"
-#' of text in the original file 
-combine_pages <- function(event, round, x) {
+#' Using page data, create row ranges for row values that have more than one
+#' text piece associated to it in panel of judges sheets
+#' @param page_data Data frame from one list item of pdf_data function output
+#' @return page_data data frame with y$range attached
+#' TODO: Consolidate this with results get_row_ranges version using some if
+#' statements on the "type" of page
+get_row_ranges_j <- function(page_data) {
   
-  if (length(x) > 1) {
+  # **Using fact that heights are always same height**
+  # (would want to generalize that ideally)
+  if (length(unique(page_data$height)) != 1) {
+    return("Error: varying text heights, expected height to be constant.")
+  }
+  
+  min_height <- min(page_data$height)
+  
+  y_positions <- table(page_data$y)
+  
+  # only take into account positions with frequency > 1
+  y_positions <- y_positions[which(y_positions > 1)]
+  y_positions <- as.numeric(names(y_positions))
+  y_positions <- y_positions - min_height/2
+  
+  y_ranges <- seq(min(y_positions), max(y_positions) + min_height, min_height)
+  y_ranges <- data.frame(min = y_ranges, max = y_ranges + min_height)
+  y_ranges$name <- paste(y_ranges$min, " - ", y_ranges$max, sep = "")
+  
+  page_data$y_range <- ""
+  page_data$y <- as.numeric(page_data$y)
+  for (i in 1:nrow(y_ranges)){
     
-    # Fake the y-coordinate just in case it matters, combine to
-    # a data frame; work in a general way that will help later on I bet:
-    for (i in 2:length(x)) x[[i]]$y <- x[[i]]$y + 1000 * (i - 1)
+    page_data$y_range <- ifelse(page_data$y > y_ranges[i, "min"] &
+                                  page_data$y < y_ranges[i, "max"],
+                                y_ranges[i, "name"], page_data$y_range)
     
   }
   
-  x <- as.data.frame(do.call(rbind, x))
+  if(sum(page_data$y_range == "") > 0) {
+    return("Error: some text values could not be placed in a row range.")
+  } 
   
-  # Turn x into a list, each item corresponding to df subset with the same `y` 
-  # values (so each x item is roughly a row of data)
-  x <- split(x, x$y)
-  
-  # We really only need the `text` column now
-  x <- lapply(x, function(a) a$text)
-  
-  # Tack on the event name and competition round for future reference
-  x <- lapply(x, function(a) c(a, event, round))
-  
-  return(x)
+  return(page_data)
   
 }
 
 
+# -----------------------------------------------------------------------------
+# Given pdf_data output df item, add row-ranges variable to diving results df
+# based on the y positions of the dive number codes (which are in all table
+# rows and are reliable)
+get_row_ranges_r <- function(page_data) {
+  
+  # **Using fact that heights are always same height**
+  # (would want to generalize that ideally)
+  if (length(unique(page_data$height)) != 1) {
+    return("Error: varying text heights, expected height to be constant.")
+  }
+  
+  min_height <- min(page_data$height)
+  
+  
+  # Find the Dive No. values - use these to find the row ranges on this page
+  # since they are a reliable pattern
+  divenos <- page_data[grepl("^[0-9]{3,4}[A-Z]$", page_data$text), ]
+  
+  # If no dive no. are found, this page is not useful to us (empty page)
+  if (nrow(divenos) == 0) {
+    return("Page has no relevant row data.")
+  }
+  
+  # Only take into account positions with frequency > 1
+  y_positions <- as.numeric(divenos$y)
+  y_positions <- y_positions - 2 # add a little extra padding for variation
+  # in y values - this will be the min value
+  # TODO: Add this tolerance as a user input?
+  
+  # Create max values
+  y_ranges <- data.frame(min = y_positions, max = y_positions + 4)
+  y_ranges$name <- paste(y_ranges$min, " - ", y_ranges$max, sep = "")
+  
+  # Assign a y_range to each piece of text
+  page_data$y_range <- ""
+  page_data$y <- as.numeric(page_data$y)
+  for (i in 1:nrow(y_ranges)){
+    
+    page_data$y_range <- ifelse(page_data$y > y_ranges[i, 1] &
+                                  page_data$y < y_ranges[i, 2],
+                        y_ranges[i, 3], page_data$y_range)
+    
+  }
+  
+  # Filter out text that didn't fall in a row containing a dive number
+  page_data <- page_data[page_data$y_range != "", ]
+  
+  return(page_data)
+  
+}
+
+
+# -----------------------------------------------------------------------------
 #' Function that builds a data frame of diving results information, relying
 #' on consistent structure of the table of results. A few values are hard coded
 #' such the column names, but because these sheets are very standardized I
@@ -139,45 +212,11 @@ combine_pages <- function(event, round, x) {
 #' just for those cases (eg. filling in constant columns).
 #' @param x List where each item is a character array representing a "row"
 #' of text in an original file (output of combine_pages)
+#' @param event Name of the diving event (character)
+#' @param round Round of the diving event (character)
 #' @return Data frame of diving results - each row is an individual dive within
 #' a competition round, within an event, for a given diver.
-get_results_df <- function(x) {
-  
-  # Find where results tables start/end, use "Detailed Results" text as anchor
-  # for top and "Official Timekeeping" for the bottom
-  tops <- as.numeric(names(x[sapply(x, function(a){
-    grepl("Detailed Results", paste(a, collapse = " "))})]))
-  bottoms <- as.numeric(names(x[sapply(x, function(a){
-    grepl("Official Timekeeping", paste(a, collapse = " "))})]))
-  
-  keep_inds <- c()
-  for (i in 1:length(tops)) {
-    
-    # Get indices of pages in this chunk (between this top and bottom)
-    pg_inds <- which(as.numeric(names(x)) > tops[i] &
-                       as.numeric(names(x)) < bottoms[i])
-    
-    # Add to list of inds we want to keep
-    keep_inds <- c(keep_inds, pg_inds)
-        
-  }
-
-  # Filter to x items that were within table bounds
-  x <- x[keep_inds]
-
-  
-  # Search for any text containing "J" followed by a number - this would be part
-  # of the column headers, so remove it
-  x <- x[!sapply(x, function(a) any(grep("J[0-9]", a)))]
-  
-  # TODO: More elegant way to search for these "bad" rows?
-  # Checking for any rows that are all text (all table rows include some
-  # numbers) OR that are the page footers (which have a million hyphens in
-  # them) OR that contain astrixes WITH equals signs, or colons and removing
-  # them, ignoring the added text pieces for event or competition round
-  x <- x[!sapply(x, function(a) grepl("^[^0-9]+$|-{2,}|\\*.*\\=|:",
-                                      paste(a[-c(length(a) - 1, length(a))],
-                                            collapse = " ")))]
+get_results_df <- function(x, event, round) {
   
   # Initialize the data frame that we want to sort this information into
   z <- data.frame(rank = numeric(),
@@ -234,13 +273,11 @@ get_results_df <- function(x) {
       z[i, "dcountry"] <- row[noc_ind]
       # Followed by the const_cols
       z[i, const_cols] <- row[(noc_ind + 1):(noc_ind + length(const_cols))]
-      # We know the last two items in row are the event and competition round,
-      # because I put them there
-      z[i, c("event", "round")] <- row[(length(row) - 1):length(row)]
+      # Event and round are constant for z
+      z[i, c("event", "round")] <- c(event, round)
       
       # Remove the items from row that we have used up
-      row <- row[-c(1:(noc_ind + length(const_cols)),
-                    (length(row) - 1):length(row))]
+      row <- row[-c(1:(noc_ind + length(const_cols)))]
       
       # "Points Behind" is populated if row has an additional column
       z[i, "pointsbehind"] <- ifelse(length(row) > 0, row, "")
@@ -266,13 +303,11 @@ get_results_df <- function(x) {
       # Now fill in the const_cols
       z[i, const_cols] <- row[dn_ind:(dn_ind + length(const_cols) - 1)]
       
-      # We know the last two items in row are the event and competition round,
-      # because I put them there
-      z[i, c("event", "round")] <- row[(length(row) - 1):length(row)]
+      # Event and round are constant for z
+      z[i, c("event", "round")] <- c(event, round)
       
       # Remove the items from row that we have used up
-      row <- row[-c(1:(dn_ind + length(const_cols) - 1),
-                    (length(row) - 1):length(row))]
+      row <- row[-c(1:(dn_ind + length(const_cols) - 1))]
       
       # "Points Behind" is populated if row has an additional column
       z[i, "pointsbehind"] <- ifelse(length(row) > 0, row, "")
@@ -293,12 +328,11 @@ get_results_df <- function(x) {
       # We can populate the const_cols right away 
       z[i, const_cols] <- row[1:length(const_cols)]
       
-      # We know the last two items in row are the event and competition round,
-      # because I put them there
-      z[i, c("event", "round")] <- row[(length(row) - 1):length(row)]
+      # Event and round are constant for z
+      z[i, c("event", "round")] <- c(event, round)
       
       # Remove the items from row that we have used up
-      row <- row[-c(1:length(const_cols), (length(row) - 1):length(row))]
+      row <- row[-c(1:length(const_cols))]
       
       # "Points Behind" is populated if row has an additional column
       z[i, "pointsbehind"] <- ifelse(length(row) > 0, row, "")
@@ -319,263 +353,139 @@ get_results_df <- function(x) {
 }
 
 
-
-
-
-
-
-
-
-
 # -----------------------------------------------------------------------------
-# ------------------------------- ARCHIVED CODE -------------------------------
-# -----------------------------------------------------------------------------
-
-# TODO: Functions need to be properly commented with doc strings and in some
-# cases cleaned and/or separated into multiple functions
-
-# TODO: Make tabulate_judges robust to multiple pages of judges
-
-# TODO: For now am ignoring alternate judges - when/where do they come up
-# in the detailed results page?
-
-# TODO: Manually obtain some of the judges nationalities
-
-
-# -----------------------------------------------------------------------------
-get_page_row_ranges <- function(page_data) {
+#' Tabulate judge information from given file
+#' @param x pdf_data function output (list - assuming of length one since judge
+#' pages are always length one for this sample)
+#' @return data frame with num = judge number; name = judge name; and round =
+#' round of diving judged
+get_judges_df <- function(x) {
   
-  # **Using fact that heights are always same height**
-  # (would want to generalize that ideally)
-  if (length(unique(page_data$height)) != 1) {
-    return("Error: varying text heights, expected height to be constant.")
-  }
+  # Find where the text "Function" is at the top of the page, and find last
+  # instance of "Legend" at the bottom of the table
+  top <- as.numeric(x[x$text == "Function", "y"])
+  bottom <- unlist(x[x$text == "Legend:", "y"])
+  bottom <- bottom[length(bottom)]
+  x <- x[x$y > top & x$y < bottom, ]
   
-  min_height <- min(page_data$height)
+  # Looking for "Panels" so we know which rounds had which judges
+  panels <- x[which(x$text == "Panel"), c("height", "y")]
   
-  y_positions <- table(page_data$y)
-  
-  # Only take into account positions with frequency > 1
-  y_positions <- y_positions[which(y_positions > 1)]
-  y_positions <- as.numeric(names(y_positions))
-  y_positions <- y_positions - min_height/2
-  
-  # Chunk up the y value ranges
-  y_ranges <- seq(min(y_positions), max(y_positions) + min_height, min_height)
-  y_ranges <- data.frame(min = y_ranges, max = y_ranges + min_height)
-  y_ranges$name <- paste(y_ranges$min, " - ", y_ranges$max, sep = "")
-  
-  # Assign a y_range to each piece of text
-  page_data$y_range <- ""
-  page_data$y <- as.numeric(page_data$y)
-  for (i in 1:nrow(y_ranges)){
+  if (nrow(panels) > 0) {
+    # Adding a buffer on the y-values in case rows are not exactly aligned 
+    panels$min_y <- panels$y - panels$height/2
+    panels$max_y <- panels$y + panels$height/2
+    panels <- panels[order(panels$y), ]
     
-    page_data$y_range <- ifelse(page_data$y > y_ranges[i, 1] &
-                                  page_data$y < y_ranges[i, 2],
-                        y_ranges[i, 3], page_data$y_range)
+    # Go through chunk of rows defined by each panel
+    judges_table <- data.frame()
+    for (i in 1:nrow(panels)) {
+      
+      if (i == nrow(panels)) { # If you are at the last panel, don't worry about
+        # bottom limit
+        x_panel <- x[which(x$y > as.numeric(panels[i, "min_y"])), ]
+      } else {
+        x_panel <- x[which(x$y > as.numeric(panels[i, "min_y"]) &
+                             x$y < as.numeric(panels[i + 1, "min_y"])), ]
+      }
+      
+      x_panel <- get_row_ranges_j(x_panel)
+      # Paste together text if it belongs to the same row
+      x_panel <- aggregate(text ~ y_range, data = x_panel, paste,
+                           collapse = " ")
+      
+      # Separate out rounds information for this panel
+      rounds <- x_panel[grepl("rounds", x_panel$text), 2]
+      rounds <- gsub("[^0-9-]", "", rounds)
+      rounds <- as.integer(unlist(strsplit(rounds, "-")))
+      
+      # The files for which I wrote this sometimes had different judges for odd
+      # and even rounds (ie. Panel A: rounds 1-3-5), so here checking to see
+      # if we have a range of rounds or a list
+      if (length(rounds) == 2 & nrow(panels) < 3) { # we have a range
+        rounds <- seq(rounds[1], rounds[2])
+      } # otherwise leave it - judges skip rounds
+      
+      # Now extract judge names/numbers, collect into data frame
+      judges <- x_panel[grepl("Judge|Alternate", x_panel$text), "text"]
+      judges <- data.frame(num = gsub("[^0-9]", "", judges),
+                           name = gsub("[^a-zA-Z ]", "", judges))
+      judges$name <- gsub("Judge |Alternate ", "", judges$name)
+      
+      judges$num = ifelse(judges$num == "", "A", judges$num)
+      
+      rounds <- data.frame(round = rounds)
+      judges <- merge(judges, rounds, by = c()) # repeat judges for each of
+      # their rounds
+      
+      judges_table <- rbind(judges_table, judges)
+      
+    }
+    
+    return(judges_table)
+    
+  } else {
+    
+    x <- get_row_ranges_j(x)
+    
+    # Paste text together that has the same y range
+    x <- aggregate(text ~ y_range, data = x, paste, collapse = " ")
+    
+    judges <- x[grepl("Judge|Alternate", x$text), "text"]
+    judges <- data.frame(num = gsub("[^0-9]", "", judges),
+                         name = gsub("[^a-zA-Z ]", "", judges))
+    judges$name <- gsub("Judge |Alternate ", "", judges$name)
+    judges$num = ifelse(judges$num == "", "A", judges$num)
+    
+    rounds <- data.frame(round = 1:6)
+    judges <- merge(judges, rounds, by = c())
+    
+    return(judges)
     
   }
-  
-  if(sum(page_data$y_range == "") > 0) {
-    return("Error: some text values could not be placed in a row range.")
-  } 
-  
-  return(page_data)
   
 }
 
 
 # -----------------------------------------------------------------------------
-# Earlier attempt to automatically figure out the column ranges, can use to 
-# aid setting the ranges manually. Ideally could get this to work for all
-# entries, maybe can think of something clever using width? But alignment is
-# changing and I think this method will require some sort of user management...
-get_approx_page_col_ranges <- function(page_data, n_ranks) {
-  
-  # Grouping horizontal positions into rows
-  min_width <- min(page_data$width)
-  
-  x_positions <- table(page_data$x) # see frequencies of horizontal text positions
-  x_positions <- x_positions[which(x_positions >= n_ranks)]
-  x_positions <- as.numeric(names(x_positions))
-  
-  x_ranges <- data.frame(min = x_positions - min_width/2,
-                         max = x_positions + min_width/2)
-  x_ranges$name <- paste(x_ranges$min, " - ", x_ranges$max, sep = "")
-  
-  page_data$x_range <- ""
-  page_data$x <- as.numeric(page_data$x)
-  for (i in 1:nrow(x_ranges)){
-    
-    page_data$x_range <- ifelse(page_data$x > x_ranges[i, 1] &
-                                  page_data$x < x_ranges[i, 2],
-                        x_ranges[i, 3], page_data$x_range)
-    
-  }
-  
-  # Issue with those remaining is going to be deciding when it is appropriate
-  # to extend ranges and in which direction... requires more info?
-  
-  return(page_data)
-  
-}
-
-
-# -----------------------------------------------------------------------------
-# Not loving this right now because it requires manually specified estimates of
-# the column ranges - will try other ways to automate this
-get_page_col_ranges <- function(x, col_info) {
-  
-  x$x_range <- ""
-  for (i in 1:nrow(col_info)){
-    
-    x$x_range <- ifelse(x$x > col_info[i, "min"] & x$x < col_info[i, "max"],
-                        col_info[i, "x_range"], x$x_range)
-    
-  }
-  
-  return(x)
-  
-}
-
-
-# -----------------------------------------------------------------------------
-pivot_pg_data <- function(x) {
-  
-  # Only missing range for "Judge's Score" heading which is extraneous anyways
-  # (this was in my initial test PDF - could be filtering more out later)
-  x <- x[which(x$x_range != ""), c(6, 7, 8)]
-  
-  # Concatenate any text that is in the same row/col combination
-  x <- aggregate(text ~ x_range + y_range, data = x, paste, collapse = " ")
-  x <- merge(x, col_info, by = "x_range")
-  x <- x[, c(3, 2, 5)]
-  names(x) <- c("text", "y_range", "x_min")
-  x <- x[order(x$x_min), ]
-  
-  x <- reshape(x, timevar = "x_min", idvar = "y_range", direction = "wide")
-  x$y_min <- as.numeric(gsub("- [0-9.]+", "", x$y_range))
-  x <- x[order(x$y_min), c(2:18)]
-  row.names(x) <- NULL
-  
-  return(x)
-  
-}
-
-
-# -----------------------------------------------------------------------------
-# Populate name, rank, and nationality fields to all relevant rows
-extend_diver_info <- function(y) {
-  
-  name <- NA
-  rank <- NA
-  NAT <- NA
-  for (i in 1:(nrow(y)-1)) {
-    
-    # If the name at this row is not NA, this is the new name going forward
-    if (!is.na(y[i, "Name"])) { 
-      name <- y[i, "Name"]
-    }
-    
-    # If the next name is NA, populate it with the current name
-    if (is.na(y[i + 1, "Name"])) {
-      y[i + 1, "Name"] <- name
-    }
-    
-    # Repeat logic with rank, nationality
-    if (!is.na(y[i, "Rank"])) { 
-      rank <- y[i, "Rank"]
-    }
-    if (is.na(y[i + 1, "Rank"])) {
-      y[i + 1, "Rank"] <- rank
-    }
-    
-    if (!is.na(y[i, "NAT"])) { 
-      nat <- y[i, "NAT"]
-    }
-    if (is.na(y[i + 1, "NAT"])) {
-      y[i + 1, "NAT"] <- nat
-    }
-    
-  }
-  
-  return(y)
-  
-}
-
-
-# -----------------------------------------------------------------------------
-# Cleaning up pivoted page table
-# TODO: Evaluate how robust this is to other pages/files
-clean_page_table <- function(x) {
-  # First two rows have column names
-  x[1, ] <- ifelse(is.na(x[1, ]), "", paste(x[1, ], " ", sep = ""))
-  names(x) <- paste(x[1, ], x[2, ], sep = "")
-  x <- x[-c(1, 2), ]
-  rownames(x) <- NULL
-  
-  x <- extend_diver_info(x)
-  
-  # Handle case where "GARCIA BOISSIER" header text was in a range above first
-  # row of table
-  # TODO: See how robust this is with other sheets
-  for (i in 1:nrow(x)) {
-    if(sum(is.na(x[i, 4:17])) == 14) {
-      x <- x[-i, ]
-    }
-  }
-  
-  # Combine names that spilled over onto multiple lines
-  diver_names <- x[!duplicated(x[, c("Name", "Rank", "NAT")]),
-                   c("Name", "Rank", "NAT")]
-  diver_names <- aggregate(Name ~ Rank + NAT,
-                           data = diver_names, paste, collapse = " ")
-  
-  x <- merge(x[, -2], diver_names, by = c("Rank", "NAT"))[, c(1, 17, 2:16)]
-  
-  return(x)
-}
-
-
-# -----------------------------------------------------------------------------
-# TODO: Make header/footer cut-offs a user input? (Test with Olympics data
-# and see how it goes)
-tabulate_results <- function(x_full, col_info) {
+# Uses above utils functions to tabulate the detailed results page
+tabulate_results <- function(x_full, event, round) {
   
   n_pages <- length(x_full)
   x_table <- data.frame()
   for (i in 1:n_pages){
     x <- x_full[[i]]
   
-    # Filtering out header/footer 700 if last pg
+    # Filter to only useful information in this page
     if (i == n_pages){
-      x <- x[which(x$y > 132), ]  # hard-coded y val of bottom of header text
-      x <- x[which(x$y < 690), ]  # hard-coded y val of top of footer text
+      # Top of table starts with "Detailed Results"
+      top <- as.numeric(x[grepl("Results", x$text), "y"])
+      # Bottom of table ends before "Note:" on last page
+      bottom <- as.numeric(x[grepl("Note:", x$text), "y"])
+      x <- x[x$y > top & x$y < bottom, ]
     } else {
-      x <- x[which(x$y > 132), ]  # hard-coded y val of bottom of header text
-      x <- x[which(x$y < 762), ]  # hard-coded y val of top of footer text
+      # Top of table starts with "Detailed Results"
+      top <- as.numeric(x[grepl("Results", x$text), "y"])
+      # Bottom of table ends before "Official Timekeeping" on last page
+      bottom <- as.numeric(x[grepl("Official", x$text), "y"])
+      x <- x[x$y > top & x$y < bottom, ]
     }
     
     # Group text into y-ranges (approximately the rows)
-    x <- get_page_row_ranges(x)
+    x <- get_row_ranges_r(x)
     
-    # Group text into x-ranges (approximately the columns)
-    # TODO: Currently expecting col_info to be manually generated - it seems
-    # like the layout of these sheets is very consistent but automating it would
-    # be ideal. Maybe could use pdf_text output to get approx widths? 
-    x <- get_page_col_ranges(x, col_info)
-    
-    # Pivot data using x/y ranges to recreate the table structure
-    x <- pivot_pg_data(x)
-    
-    # This would be a blank page
-    if (nrow(x) <= 2) {
-      break
+    # If this is an empty page, continue on
+    if (is.character(x)) {
+      next
     }
     
-    # Clean table
-    x <- clean_page_table(x)
+    # Combine text in the same y_range
+    x <- x[order(x$x), ] # Important that data is sorted by x for next steps
+    x <- split(x, x$y_range)
+    x <- lapply(x, function(a) a$text)
     
+    # Clean this into a table using helper function
+    x <- get_results_df(x, event, round)
     x_table <- rbind(x_table, x)
     
   }
@@ -586,81 +496,61 @@ tabulate_results <- function(x_full, col_info) {
 
 
 # -----------------------------------------------------------------------------
-# TODO: This function could be split up into pieces and made more efficient/
-# readable
-tabulate_judges <- function(x) {
+# Use utils functions above to get compiled information on judges for this round
+# of this event
+tabulate_judges <- function(x_full, event, round) {
   
-  if (length(x) > 1) {
-    print("Error: multiple pages of judges.")
-    return(NULL)
+  n_pages <- length(x_full)
+  judges_all <- data.frame(event = character(),
+                           round = character(),
+                           divenum = numeric(),
+                           J1 = character(),
+                           J2 = character(),
+                           J3 = character(),
+                           J4 = character(),
+                           J5 = character(),
+                           J6 = character(),
+                           J7 = character(),
+                           JA = character())
+  for (i in 1:n_pages){
+    x <- x_full[[i]]
+    judges <- get_judges_df(x)
+    names(judges) <- c("num", "name", "divenum")
+    judges$name <- trimws(judges$name)
+    
+    # Reshape to fit data frame requirements
+    judges <- reshape(judges, idvar = "divenum", timevar= "num",
+                      direction = "wide")
+    names(judges) <- gsub("name.", "J", names(judges))
+    judges$event <- event
+    judges$round <- gsub("[^a-zA-Z]", "", unname(round))
+    
+    judges <- judges[, c("event", "round", "divenum", "J1", "J2", "J3", "J4",
+                         "J5", "J6", "J7", "JA")]
+    
+    # Add to combined data frame
+    judges_all <- rbind(judges_all, judges)
+    
+    # Filter out Women's final rounds with an extra row (women do 5 dives instead
+    # of 6)
+    judges_all <- judges_all[!(judges_all$event %in% c("W10mPF", "W3mSB") & 
+                                 judges_all$divenum == 6), ]
+    
   }
   
-  x <- x[[1]]
+  judges_all$round <- round
+  judges_all$event <- event
   
-  # "Panel of Judges" text is at a little above y = 135, footer a little below
-  # y = 700, filter out
-  x <- x[which(x$y > 150 & x$y < 700),]
-  
-  # Looking for "Panels" so we know which rounds had which judges
-  panels <- x[which(x$text == "Panel"), c(2, 4)]
-  
-  if (nrow(panels) > 0) {
-    panels$min_y <- panels$y - panels$height/2
-    panels$max_y <- panels$y + panels$height/2
-    panels <- panels[order(panels$y), ]
-    
-    judges_table <- data.frame()
-    for (i in 1:nrow(panels)) {
-      
-      if (i == nrow(panels)) {
-        x_panel <- x[which(x$y > as.numeric(panels[i, "min_y"])), ]
-      } else {
-        x_panel <- x[which(x$y > as.numeric(panels[i, "min_y"]) &
-                             x$y < as.numeric(panels[i + 1, "min_y"])), ]
-      }
-      
-      x_panel <- get_page_row_ranges(x_panel)
-      x_panel <- aggregate(text ~ y_range, data = x_panel, paste, collapse = " ")
-      
-      rounds <- x_panel[which(grepl("rounds", x_panel$text)), 2]
-      rounds <- gsub("[^0-9-]", "", rounds)
-      rounds <- as.integer(unlist(strsplit(rounds, "-")))
-      
-      if (length(rounds) == 2 & nrow(panels) < 3) { # we have a range
-        rounds <- seq(rounds[1], rounds[2])
-      } # otherwise leave it - judges skip rounds
-      
-      judges <- x_panel[which(grepl("Judge", x_panel$text)), 2]
-      judges <- data.frame(num = gsub("[^0-9]", "", judges),
-                           name = gsub("[^a-zA-Z ]", "", judges))
-      judges$name <- gsub("Judge ", "", judges$name)
-      
-      rounds <- data.frame(round = rounds)
-      judges <- merge(judges, rounds, by = c())
-      
-      judges_table <- rbind(judges_table, judges)
-      
-    }
-    
-    return(judges_table)
-    
-  } else {
-    
-    x <- get_page_row_ranges(x)
-    x <- aggregate(text ~ y_range, data = x, paste, collapse = " ")
-    
-    judges <- x[which(grepl("Judge", x$text)), 2]
-    judges <- data.frame(num = gsub("[^0-9]", "", judges),
-                         name = gsub("[^a-zA-Z ]", "", judges))
-    judges$name <- gsub("Judge ", "", judges$name)
-    
-    rounds <- data.frame(round = 1:7)
-    judges <- merge(judges, rounds, by = c())
-    
-    return(judges)
-    
-  }
+  return(judges_all)
   
 }
+
+
+
+
+
+
+
+
 
 

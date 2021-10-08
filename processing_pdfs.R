@@ -13,7 +13,7 @@ rounds <- c("Preliminary", "Semifinal", "Final")
 pages <- collect_pgs(events, rounds, pdf_path)
 
 # Concatenate results and judges into one big table, adding columns for event
-# and round (renamed level to avoid confusion with judging round)
+# and round
 results <- data.frame()
 judges <- data.frame()
 for (i in 1:length(pages)) {
@@ -28,22 +28,19 @@ for (i in 1:length(pages)) {
   x <- get_pdf_data(pdf_path, pages[[i]])
   
   if (ids["type"] == "results") {
-    x <- combine_pages(ids["event"], ids["round"], x)
-    test <- get_results_df(x)
+    x <- tabulate_results(x, ids["event"], ids["round"])
     results <- rbind(results, x)
   }
   
   if (ids[3] == "judges") {
-    x <- tabulate_judges(x)
-    x$level <- ids[1]
-    x$event <- ids[2]
+    x <- tabulate_judges(x, ids["event"], ids["round"])
     judges <- rbind(judges, x)
   }
   
 }
 
-test <- aggregate(round ~ num + level + event, data = judges, length)
+# Filtering out little judges bug when event = womens and divenum = 6
+# TODO: Fix that in the utils code
+judges <- judges[!(grepl("women's", judges$event) & judges$divenum == 6), ]
 
-# write.csv(results, "./data/diving_world_cup_2021_results.csv", row.names = FALSE)
-# write.csv(judges, "./data/diving_world_cup_2021_judges.csv", row.names = FALSE)
 
