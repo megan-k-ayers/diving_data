@@ -3,6 +3,16 @@ library(pdftools)
 source("./utils.R")
 
 # User provided inputs
+# pdf_path <- "./data/FINA_past/2018_FINA_World_Series_Montreal.pdf"
+# events <- c(" Men's 3m Springboard", "Women's 3m Springboard",
+#             " Men's 10m Platform", "Women's 10m Platform")
+# rounds <- c("Semifinal A", "Semifinal B", "Final")
+
+# pdf_path <- "./data/FINA_past/2015_FINA_World_Series_Dubai.pdf"
+# events <- c(" Men's 3m Springboard", "Women's 3m Springboard",
+#             " Men's 10m Platform", "Women's 10m Platform")
+# rounds <- c("Semifinal A", "Semifinal B", "Final")
+
 pdf_path <- "./data/omega_complete_results_book_2021_diving_world_cup.pdf"
 events <- c(" Men's 3m Springboard", "Women's 3m Springboard",
             " Men's 10m Platform", "Women's 10m Platform")

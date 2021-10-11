@@ -364,8 +364,8 @@ get_judges_df <- function(x) {
   # Find where the text "Function" is at the top of the page, and find last
   # instance of "Legend" at the bottom of the table
   top <- as.numeric(x[x$text == "Function", "y"])
-  bottom <- unlist(x[x$text == "Legend:", "y"])
-  bottom <- bottom[length(bottom)]
+  bottom <- unlist(x[x$text %in% c("Legend:", "Timekeeping"), "y"])
+  bottom <- min(bottom)
   x <- x[x$y > top & x$y < bottom, ]
   
   # Looking for "Panels" so we know which rounds had which judges
@@ -458,14 +458,14 @@ tabulate_results <- function(x_full, event, round) {
   
     # Filter to only useful information in this page
     if (i == n_pages){
-      # Top of table starts with "Detailed Results"
-      top <- as.numeric(x[grepl("Results", x$text), "y"])
+      # Top of table starts with "Detailed Results" in English or French
+      top <- as.numeric(max(x[grepl("Results|Résultats", x$text), "y"]))
       # Bottom of table ends before "Note:" on last page
       bottom <- as.numeric(x[grepl("Note:", x$text), "y"])
       x <- x[x$y > top & x$y < bottom, ]
     } else {
       # Top of table starts with "Detailed Results"
-      top <- as.numeric(x[grepl("Results", x$text), "y"])
+      top <- as.numeric(max(x[grepl("Results|Résultats", x$text), "y"]))
       # Bottom of table ends before "Official Timekeeping" on last page
       bottom <- as.numeric(x[grepl("Official", x$text), "y"])
       x <- x[x$y > top & x$y < bottom, ]
@@ -525,8 +525,14 @@ tabulate_judges <- function(x_full, event, round) {
     judges$event <- event
     judges$round <- gsub("[^a-zA-Z]", "", unname(round))
     
-    judges <- judges[, c("event", "round", "divenum", "J1", "J2", "J3", "J4",
-                         "J5", "J6", "J7", "JA")]
+    if ("JA" %in% names(judges)) {
+      judges <- judges[, c("event", "round", "divenum", "J1", "J2", "J3", "J4",
+                           "J5", "J6", "J7", "JA")]
+    } else {
+      judges <- judges[, c("event", "round", "divenum", "J1", "J2", "J3", "J4",
+                           "J5", "J6", "J7")]
+    }
+    
     
     # Add to combined data frame
     judges_all <- rbind(judges_all, judges)
@@ -544,12 +550,6 @@ tabulate_judges <- function(x_full, event, round) {
   return(judges_all)
   
 }
-
-
-
-
-
-
 
 
 
