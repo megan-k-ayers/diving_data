@@ -15,13 +15,20 @@
 # the page
 get_results_pgs <- function(event, round, all_pages) {
   
+  # Sometimes "Final" gets found in "Semi-Final" words so pad with spaces
+  round <- ifelse(round == "Final", paste(" ", round, " ", sep = ""), round)
+  
   pgs <- c()
   for (i in 1:length(all_pages)) {
     
+    page <- all_pages[[i]]
+    page <- gsub(" {1,}", " ", page)
+    page <- gsub("\n", " ", page)
+    
     # Search for any text like "[event name]...[round name]..."Detailed Results"
     # which signals that this is a detailed results page that we want
-    if (grepl(paste(event, round, "Detailed Results", sep = ".*"),
-              all_pages[[i]])) {
+    if (grepl(event, page) & grepl(round, page) &
+        grepl("Detailed Results", page)) {
       pgs <- c(pgs, i) }
     
   }
@@ -35,16 +42,25 @@ get_results_pgs <- function(event, round, all_pages) {
 # the page
 get_judges_pgs <- function(event, round, all_pages) {
   
+  # Sometimes "Final" gets found in "Semi-Final" words so pad with spaces
+  round <- ifelse(round == "Final", paste(" ", round, " ", sep = ""), round)
+  
   pgs <- c()
   for (i in 1:length(all_pages)) {
+    
+    page <- all_pages[[i]]
+    page <- gsub(" {1,}", " ", page)
+    page <- gsub("\n", " ", page)
     
     # Search for any text like "[event name]...[round name]..."Panel of Judges"
     # which signals that this is a judge panel page that we want
     
     # Separated flag from if statement because the logical statement is so long
-    flag <- grepl(paste(event, round, "Panel of Judges", sep = ".*"),
-                  all_pages[[i]]) &
-      !grepl("For more detail on the judges see", all_pages[[i]])
+    flag <- grepl(event, page) & grepl(round, page) &
+      grepl("Panel of Judges", page) &
+      !grepl("For more detail on the judges see", page) # Sometimes on other pages
+    # that are not the Panel of Judges pages
+    
     if (flag) { pgs <- c(pgs, i) }
     
   }
@@ -218,6 +234,9 @@ get_row_ranges_r <- function(page_data) {
 #' a competition round, within an event, for a given diver.
 get_results_df <- function(x, event, round) {
   
+  # Women do 5 dives, men do 6
+  n <- ifelse(grepl("women's", event), 5, 6)
+  
   # Initialize the data frame that we want to sort this information into
   z <- data.frame(rank = numeric(),
                   name = character(),
@@ -247,6 +266,37 @@ get_results_df <- function(x, event, round) {
   for (i in 1:length(x)) { # Iterate through the "rows" of this table
     
     row <- x[[i]]
+    
+    # SPECIAL CASE: Diver is not ranked (withdrew from competition)
+    # Find this by checking if array strings after the dive no contain "WD"
+    # (after dive no just in case someone's name includes initials "WD")
+    # TODO: Less clunky solution?
+    diveno_ind <- grep("^[0-9]{3,4}[A-Z]$", row)[1]
+    if (any(grepl("^WD$", row[diveno_ind:length(row)]))) {
+      
+      # This diver's name would have been mistakenly concatenated with the
+      # previously diver - find those errors 
+      prev_name <- z[i - n, "name"]
+      bad_name <- z[grepl(paste("^", prev_name, " [A-Z]+", sep = ""),
+                          z$name), "name"][1]
+      bad_name <- trimws(gsub(prev_name, "", bad_name))
+      
+      # Fix previous person who got messed up
+      prev_start <- which(z$name == prev_name)[1]
+      z[prev_start:(prev_start + n - 1), "name"] <- prev_name # repopulate name
+      
+      # Remove rows with bad_name (ignore someone who withdraws)
+      z <- z[!grepl(bad_name, z$name), ]
+      
+      warning <- paste("WARNING: One diver was idenfitied as withdrawing: ",
+                       bad_name, event, round, sep = " ")
+      
+      # Print warning, break out of loop because withdrawals are at the end of
+      # our table
+      print(warning)
+      break
+      
+    }
     
     # CASE 1: Row begins with rank
     if (grepl("^[0-9]{1,2}$", row[1])) { # Check if row item 1 is just a number
@@ -525,6 +575,8 @@ tabulate_judges <- function(x_full, event, round) {
     judges$event <- event
     judges$round <- gsub("[^a-zA-Z]", "", unname(round))
     
+    # Sometimes alternate judges are not on the panels and don't come through
+    # as columns
     if ("JA" %in% names(judges)) {
       judges <- judges[, c("event", "round", "divenum", "J1", "J2", "J3", "J4",
                            "J5", "J6", "J7", "JA")]
@@ -539,7 +591,7 @@ tabulate_judges <- function(x_full, event, round) {
     
     # Filter out Women's final rounds with an extra row (women do 5 dives instead
     # of 6)
-    judges_all <- judges_all[!(judges_all$event %in% c("W10mPF", "W3mSB") & 
+    judges_all <- judges_all[!(grepl("women", judges_all$event) & 
                                  judges_all$divenum == 6), ]
     
   }

@@ -49,8 +49,5 @@ for (i in 1:length(pages)) {
   
 }
 
-# Filtering out little judges bug when event = womens and divenum = 6
-# TODO: Fix that in the utils code
-judges <- judges[!(grepl("women's", judges$event) & judges$divenum == 6), ]
 
 
