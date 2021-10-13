@@ -28,4 +28,4 @@ combined <- combined[complete.cases(combined), ]
 summary(combined)
 hist(combined$judges_score)
 
-write.csv(df, "all_combined.csv", row.names = F)
+write.csv(combined, "all_combined.csv", row.names = F)
