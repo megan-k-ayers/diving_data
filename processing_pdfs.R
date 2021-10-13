@@ -85,8 +85,26 @@ run(pdf_path = "./data/FINA_past/2017_FINA_World_Series_Beijing.pdf",
 run(pdf_path = "./data/FINA_past/2018_FINA_World_Series_Fuji.pdf",
     events = events, rounds = rounds_sf)
 
+all_pdf_files <- list.files("./data/FINA_past/", recursive = T)
+all_pdf_files <- paste0("./data/FINA_past/", all_pdf_files)
+for (f in all_pdf_files) {
+  tryCatch(run(pdf_path = f,events = events, rounds = rounds_p),
+           error = function(e) {
+             print("Using Semifinal A&B Parsing")
+             tryCatch(run(pdf_path = f,
+                 events = events, 
+                 rounds = rounds_sf), error=function(e) {
+                   print("Both Parsing Failed")
+                 })
+             }
+           )
+}
 
-
-
+#"Tabulating results and judges for ./data/FINA_past/2015_FINA_World_Series_London.pdf"
+#"Tabulating results and judges for ./data/FINA_past/2015_FINA_World_Series_London.pdf"
+#"Tabulating results and judges for ./data/FINA_past/2016_FINA_World_Cup.pdf"
+#"Tabulating results and judges for ./data/FINA_past/2018_FINA_World_Cup_Wuhan.pdf"
+#"Tabulating results and judges for ./data/FINA_past/2018_FINA_World_Series_Beijing.pdf"
+#"Tabulating results and judges for ./data/FINA_past/2020_FINA_World_Series.pdf"
 
 

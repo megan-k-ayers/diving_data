@@ -1,0 +1,100 @@
+---
+title: "analysis"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(pdftools)
+```
+
+## Preprocessing
+
+```{r preprocessing}
+combined <- read.csv("./data/diving_world_cup_2021_combined.csv", as.is = T)
+combined$judge_name <- trimws(combined$judge_name)
+judge_info <- read.csv("../Part-Ia.csv", as.is = T)
+names(judge_info)[1] <- c("judge_name")
+combined <- merge(combined, judge_info)
+combined <- combined[complete.cases(combined), ]
+```
+
+## Including Plots
+
+```{r summary, echo=FALSE}
+summary(combined)
+hist(combined$Score)
+```
+
+## Score Distribution of Each Judge
+
+```{r fig.height = 3, fig.width = 3}
+for (j in unique(combined$judge_name)) {
+  hist(combined$Score[combined$judge_name == j], 
+       main=paste(j, unique(combined$jcountry[combined$judge_name == j])), 
+       xlab="Score", 
+       ylab="Frequency")
+}
+```
+
+## Score Distribution of Each Judge Gender
+
+```{r}
+for (j in unique(combined$gender)) {
+  hist(combined$Score[combined$gender == j],
+       main=j,
+       xlab="Score",
+       ylab="Frequency")
+}
+```
+
+## Score Distribution of Each Judge Gender
+
+```{r}
+#interestingly the distribution is pretty even
+for (j in unique(combined$level)) {
+  hist(combined$Score[combined$level == j],
+       main=j,
+       xlab="Score",
+       ylab="Frequency")
+}
+```
+
+## Score Distribution of Each Athlete Conutry
+
+```{r}
+hist(combined$Score[combined$NAT == "CHN"],
+       main="CHN",
+       xlab="Score",
+       ylab="Frequency")
+
+hist(combined$Score[combined$NAT == "USA"], 
+       main="USA",
+       xlab="Score",
+       ylab="Frequency")
+```
+
+
+## Percent of Matches with the Same Judges
+
+```{r}
+sum(combined$jcountry == combined$NAT) / nrow(combined)
+```
+
+## Percent of Matches with the Same Judges
+
+```{r}
+female_judges <- (combined$gender == "Female")
+female_athletes <- grepl("women", combined$event)
+sum(female_judges == female_athletes) / nrow(combined)
+```
+
+
+
+
+
+
+
+
