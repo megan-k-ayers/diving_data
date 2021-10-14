@@ -149,7 +149,7 @@ get_row_ranges_j <- function(page_data) {
   page_data$y <- as.numeric(page_data$y)
   for (i in 1:nrow(y_ranges)){
     
-    page_data$y_range <- ifelse(page_data$y > y_ranges[i, "min"] &
+    page_data$y_range <- ifelse(page_data$y >= y_ranges[i, "min"] &
                                   page_data$y < y_ranges[i, "max"],
                                 y_ranges[i, "name"], page_data$y_range)
     
@@ -418,6 +418,11 @@ get_judges_df <- function(x) {
   bottom <- min(bottom)
   x <- x[x$y > top & x$y < bottom, ]
   
+  # Special case when REVISED text on Panel of Judges page comes before
+  # "Legend" - remove thats
+  x <- x[x$text != "REVISED", ]
+  
+  
   # Looking for "Panels" so we know which rounds had which judges
   panels <- x[which(x$text == "Panel"), c("height", "y")]
   
@@ -446,6 +451,12 @@ get_judges_df <- function(x) {
       
       # Separate out rounds information for this panel
       rounds <- x_panel[grepl("rounds", x_panel$text), 2]
+      
+      # Sometimes there is not "rounds" text preceding the rounds listing for
+      # the panel - try searching for something like "(1-3)"
+      if (length(rounds) == 0) {
+        rounds <- x_panel[grepl("\\([0-9 -]+\\)", x_panel$text), 2]
+      }
       rounds <- gsub("[^0-9-]", "", rounds)
       rounds <- as.integer(unlist(strsplit(rounds, "-")))
       
