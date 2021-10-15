@@ -41,7 +41,7 @@ run <- function(pdf_path, events, rounds) {
   
   # Write results and judges csv's
   print(paste("Saving results and judges df's for", pdf_path))
-  
+
   comp_name <- gsub("./data/FINA_past/|.pdf|FINA_", "", pdf_path)
   write.csv(results,
             paste("./detailed_results/", comp_name, "_RESULTS.csv", sep = ""),
@@ -59,52 +59,32 @@ run <- function(pdf_path, events, rounds) {
 rounds_p <- c("Preliminary", "Semifinal", "Final")
 # Names of rounds when we have Semis A and B
 rounds_sf <- c("Semifinal A", "Semifinal B", "Final")
-
 # Events to grab
 events <- c(" Men's 3m Springboard", "Women's 3m Springboard",
             " Men's 10m Platform", "Women's 10m Platform")
 
 
-# TOKYO WORLD CUP
-run(pdf_path = "./data/FINA_past/2021_FINA_World_Cup.pdf",
-    events = events, rounds = rounds_p)
-
-# MONTREAL 2018
-run(pdf_path = "./data/FINA_past/2018_FINA_World_Series_Montreal.pdf",
-    events = events, rounds = rounds_sf)
-
-# DUBAI 2015
-run(pdf_path = "./data/FINA_past/2015_FINA_World_Series_Dubai.pdf",
-    events = events, rounds = rounds_sf)
-
-# BEIJING 2017
-run(pdf_path = "./data/FINA_past/2017_FINA_World_Series_Beijing.pdf",
-    events = events, rounds = rounds_sf)
-
-# FUJI 2018
-run(pdf_path = "./data/FINA_past/2018_FINA_World_Series_Fuji.pdf",
-    events = events, rounds = rounds_sf)
-
+# Run function run() on all FINA_past files
 all_pdf_files <- list.files("./data/FINA_past/", recursive = T)
 all_pdf_files <- paste0("./data/FINA_past/", all_pdf_files)
+
 for (f in all_pdf_files) {
-  tryCatch(run(pdf_path = f,events = events, rounds = rounds_p),
+  tryCatch(run(pdf_path = f, events = events, rounds = rounds_sf),
            error = function(e) {
              print("Using Semifinal A&B Parsing")
              tryCatch(run(pdf_path = f,
-                 events = events, 
-                 rounds = rounds_sf), error=function(e) {
-                   print("Both Parsing Failed")
-                 })
-             }
-           )
+                          events = events, 
+                          rounds = rounds_p), error=function(e) {
+                            print("BOTH PARSINGS FAILED")
+                          })
+           }
+  )
 }
 
-#"Tabulating results and judges for ./data/FINA_past/2015_FINA_World_Series_London.pdf"
-#"Tabulating results and judges for ./data/FINA_past/2015_FINA_World_Series_London.pdf"
-#"Tabulating results and judges for ./data/FINA_past/2016_FINA_World_Cup.pdf"
-#"Tabulating results and judges for ./data/FINA_past/2018_FINA_World_Cup_Wuhan.pdf"
-#"Tabulating results and judges for ./data/FINA_past/2018_FINA_World_Series_Beijing.pdf"
-#"Tabulating results and judges for ./data/FINA_past/2020_FINA_World_Series.pdf"
-
+# *** Beijing World Series appears to be missing panels of judges for final
+# rounds which is causing the error in the loop above - run separately for
+# just the semifinals 
+run(pdf_path = "./data/FINA_past/2018_FINA_World_Series_Beijing.pdf",
+    events = events,
+    rounds = c("Semifinal A", "Semifinal B"))
 
