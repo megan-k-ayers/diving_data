@@ -7,18 +7,14 @@ output:
 
 ```{r setup, include=FALSE}
 rm(list = ls())
-library(pdftools)
 ```
 
 ## Preprocessing
 
 ```{r preprocessing}
-combined <- read.csv("./data/diving_world_cup_2021_combined.csv", as.is = T)
-combined$judge_name <- trimws(combined$judge_name)
-judge_info <- read.csv("../Part-Ia.csv", as.is = T)
-names(judge_info)[1] <- c("judge_name")
-combined <- merge(combined, judge_info)
-combined <- combined[complete.cases(combined), ]
+combined <- read.csv("all_combined.csv", as.is = T)
+boxplot(judges_score~year,data=combined, main="FINA Score Change Over Time",
+   xlab="Year", ylab="Judges Score")
 ```
 
 ## Including Plots
