@@ -1,7 +1,8 @@
 rm(list = ls())
 
 all_csv_files <- list.files("./detailed_results/", recursive = T)
-all_csv_files <- paste0("./detailed_results/", all_csv_files)
+all_csv_files <- paste0("./detailed_results/", 
+                        all_csv_files)[-length(all_csv_files)]
 f <- all_csv_files[1]
 
 all_data <- data.frame()
